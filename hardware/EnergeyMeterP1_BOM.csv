@@ -1,0 +1,6 @@
+"Reference","Qty","Value","DNP","Exclude from BOM","Exclude from Board","Footprint","Datasheet"
+"J1","1","RJ12","","","","Connector_RJ:RJ25_Wayconn_MJEA-660X1_Horizontal",""
+"R1,R2","2","330","","","","Resistor_SMD:R_0805_2012Metric",""
+"R3","1","2.2k","","","","Resistor_SMD:R_0805_2012Metric",""
+"U2,U3","2","H11L1","","","","Package_DIP:DIP-6_W7.62mm_SMDSocket_SmallPads","https://www.onsemi.com/pub/Collateral/H11L3M-D.PDF"
+"U4","1","ESP32-C3_SUPERMINI_SMD","","","","ESPRESSIF:MODULE_ESP32-C3_SUPERMINI",""
