@@ -1,0 +1,126 @@
+[
+  {
+    "id": "8d2d96fdc6d64e3a",
+    "type": "tab",
+    "label": "EnergyMeter MQTT to Influx",
+    "disabled": false,
+    "info": ""
+  },
+  {
+    "id": "4c64313d86d45ef6",
+    "type": "mqtt-broker",
+    "name": "MQTT broker",
+    "broker": "mqtt",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthRetain": "false",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closeRetain": "false",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willRetain": "false",
+    "willPayload": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "20a9a4787f7f4cf0",
+    "type": "influxdb",
+    "hostname": "127.0.0.1",
+    "port": "8086",
+    "protocol": "http",
+    "database": "homeassistant",
+    "name": "InfluxDB",
+    "usetls": false,
+    "tls": "",
+    "influxdbVersion": "1.x",
+    "url": "http://127.0.0.1:8086",
+    "timeout": "10",
+    "rejectUnauthorized": true
+  },
+  {
+    "id": "c4d88d6ec5f6f85e",
+    "type": "mqtt in",
+    "z": "8d2d96fdc6d64e3a",
+    "name": "EnergyMeter state",
+    "topic": "energymeter/t210/state",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "4c64313d86d45ef6",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 120,
+    "wires": [
+      [
+        "a917b7910e2b1f5f"
+      ]
+    ]
+  },
+  {
+    "id": "a917b7910e2b1f5f",
+    "type": "json",
+    "z": "8d2d96fdc6d64e3a",
+    "name": "Parse JSON",
+    "property": "payload",
+    "action": "obj",
+    "pretty": false,
+    "x": 340,
+    "y": 120,
+    "wires": [
+      [
+        "d47af84b166d2f57"
+      ]
+    ]
+  },
+  {
+    "id": "d47af84b166d2f57",
+    "type": "function",
+    "z": "8d2d96fdc6d64e3a",
+    "name": "To Influx point",
+    "func": "const payload = msg.payload;\\nconst flushIntervalMs = 60 * 1000;\\n\\nif (!payload || typeof payload !== \\\"object\\\" || Array.isArray(payload)) {\\n    return null;\\n}\\n\\nif (typeof msg.topic === \\\"string\\\" && !msg.topic.endsWith(\\\"/state\\\")) {\\n    return null;\\n}\\n\\nconst fieldNames = [\\n    \\\"tariff\\\",\\n    \\\"power_failures\\\",\\n    \\\"long_power_failures\\\",\\n    \\\"import_t1_kwh\\\",\\n    \\\"import_t2_kwh\\\",\\n    \\\"export_t1_kwh\\\",\\n    \\\"export_t2_kwh\\\",\\n    \\\"power_delivered_kw\\\",\\n    \\\"power_returned_kw\\\",\\n    \\\"gas_m3\\\",\\n    \\\"voltage_l1_v\\\",\\n    \\\"voltage_l2_v\\\",\\n    \\\"voltage_l3_v\\\",\\n    \\\"current_l1_a\\\",\\n    \\\"current_l2_a\\\",\\n    \\\"current_l3_a\\\",\\n    \\\"power_delivered_l1_kw\\\",\\n    \\\"power_delivered_l2_kw\\\",\\n    \\\"power_delivered_l3_kw\\\",\\n    \\\"power_returned_l1_kw\\\",\\n    \\\"power_returned_l2_kw\\\",\\n    \\\"power_returned_l3_kw\\\"\\n];\\n\\nfunction addNumericField(target, source, key) {\\n    if (!(key in source)) {\\n        return;\\n    }\\n\\n    const value = Number(source[key]);\\n    if (Number.isFinite(value)) {\\n        target[key] = value;\\n    }\\n}\\n\\nfunction parseDsmrTimestamp(raw) {\\n    if (typeof raw !== \\\"string\\\") {\\n        return null;\\n    }\\n\\n    const match = raw.trim().match(/^(\\\\d{2})(\\\\d{2})(\\\\d{2})(\\\\d{2})(\\\\d{2})(\\\\d{2})([SW])$/);\\n    if (!match) {\\n        return null;\\n    }\\n\\n    const year = 2000 + Number(match[1]);\\n    const month = match[2];\\n    const day = match[3];\\n    const hour = match[4];\\n    const minute = match[5];\\n    const second = match[6];\\n    const offset = match[7] === \\\"S\\\" ? \\\"+02:00\\\" : \\\"+01:00\\\";\\n\\n    const parsed = new Date(`${year.toString().padStart(4, \\\"0\\\")}-${month}-${day}T${hour}:${minute}:${second}${offset}`);\\n    if (Number.isNaN(parsed.getTime())) {\\n        return null;\\n    }\\n\\n    return parsed;\\n}\\n\\nconst fields = {};\\nfor (const key of fieldNames) {\\n    addNumericField(fields, payload, key);\\n}\\n\\nif (Object.keys(fields).length === 0) {\\n    return null;\\n}\\n\\nconst receivedAt = Date.now();\\nconst meterTime = parseDsmrTimestamp(payload.timestamp);\\nfields.time = meterTime ? meterTime.getTime() : receivedAt;\\n\\nconst tags = {};\\nif (typeof payload.meter_id === \\\"string\\\" && payload.meter_id.trim() !== \\\"\\\") {\\n    tags.meter_id = payload.meter_id.trim();\\n}\\n\\nconst bufferState = context.get(\\\"influxPointBuffer\\\") || {\\n    startedAt: receivedAt,\\n    points: []\\n};\\n\\nif (!Array.isArray(bufferState.points) || typeof bufferState.startedAt !== \\\"number\\\") {\\n    bufferState.startedAt = receivedAt;\\n    bufferState.points = [];\\n}\\n\\nbufferState.points.push([fields, tags]);\\n\\nif ((receivedAt - bufferState.startedAt) < flushIntervalMs) {\\n    context.set(\\\"influxPointBuffer\\\", bufferState);\\n    return null;\\n}\\n\\nmsg.payload = bufferState.points;\\ncontext.set(\\\"influxPointBuffer\\\", {\\n    startedAt: receivedAt,\\n    points: []\\n});\\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 550,
+    "y": 120,
+    "wires": [
+      [
+        "f24b4d910760e030"
+      ]
+    ]
+  },
+  {
+    "id": "f24b4d910760e030",
+    "type": "influxdb out",
+    "z": "8d2d96fdc6d64e3a",
+    "influxdb": "20a9a4787f7f4cf0",
+    "name": "Write energy_meter_nl",
+    "measurement": "energy_meter_nl",
+    "precision": "ms",
+    "retentionPolicy": "",
+    "database": "",
+    "precisionV18FluxV20": "ms",
+    "retentionPolicyV18Flux": "",
+    "org": "",
+    "bucket": "",
+    "x": 790,
+    "y": 120,
+    "wires": []
+  }
+]
